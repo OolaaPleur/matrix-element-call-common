@@ -364,6 +364,21 @@ async def ensure_cross_signing(
         return
 
     # --- Keys on server, have local private keys ---
+    # The local file can be stale: the account's keys were reset later (e.g. from
+    # Element). Signing with it is useless, and the upload still "succeeds" because
+    # the payload carries the device's existing valid signature, so check first.
+    server_ss_pub = next(iter(ssk.get(user_id, {}).get("keys", {}).values()), None)
+    if server_ss_pub != local_keys.self_signing_pub:
+        signed = bool(server_ss_pub) and _verify_device_sig(server_data, user_id, device_id, server_ss_pub)
+        logger.warning(
+            "Cross-signing: %s is stale (self-signing key %s… locally, %s… on the server), not signing with it. "
+            "Device %s is %s. Restore the file with "
+            "matrix-element-call-common/scripts/restore_cross_signing_keys.py (needs the recovery key).",
+            _KEYS_FILE, local_keys.self_signing_pub[:8], (server_ss_pub or "none")[:8], device_id,
+            "still validly signed" if signed else "NOT signed",
+        )
+        return
+
     if _verify_device_sig(server_data, user_id, device_id, local_keys.self_signing_pub):
         logger.info("Cross-signing: device %s already validly signed, nothing to do", device_id)
         return
