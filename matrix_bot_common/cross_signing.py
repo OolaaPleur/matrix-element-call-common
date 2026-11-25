@@ -53,6 +53,8 @@ def _write_private(path: Path, data: dict) -> None:
     with os.fdopen(fd, "w") as f:
         os.fchmod(f.fileno(), 0o600)
         json.dump(data, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())  # a power cut right after the rename mustn't leave an empty keys file
     os.replace(tmp, path)
 
 
@@ -120,14 +122,21 @@ def load_pending(data_dir: Path) -> Optional[dict]:
     path = data_dir / _PENDING_FILE
     if not path.exists():
         return None
+    problem = None
     try:
         p = json.loads(path.read_text())
-    except Exception:
-        return None
-    if time.time() - p.get("created_at", path.stat().st_mtime) > _PENDING_MAX_AGE:
+        if not isinstance(p.get("session_id"), str) or not isinstance(p.get("payload"), dict):
+            raise ValueError("missing session_id or payload")
+        CrossSigningKeys.from_dict(p)
+    except Exception as exc:
+        problem = f"unreadable ({exc})"
+    else:
+        if time.time() - p.get("created_at", path.stat().st_mtime) > _PENDING_MAX_AGE:
+            problem = "older than a day"
+    if problem:
         expired = path.with_name(path.name + ".expired")
         path.replace(expired)
-        logger.warning("Cross-signing: pending approval is older than a day, moved to %s and ignored", expired.name)
+        logger.warning("Cross-signing: pending approval is %s, moved to %s and ignored", problem, expired.name)
         return None
     return p
 
@@ -306,12 +315,14 @@ async def _ensure(homeserver: str, token: str, user_id: str, device_id: str, dat
     if pending:
         logger.info("Cross-signing: pending approval found — attempting UIA completion")
         auth = {"type": _UIA_TYPE, "session": pending["session_id"]}
-        ok, _, url = await _upload_signing_keys(homeserver, token, pending["payload"], auth=auth)
+        ok, session_id, url = await _upload_signing_keys(homeserver, token, pending["payload"], auth=auth)
         if ok:
             logger.info("Cross-signing: approval accepted, keys uploaded")
             await _finish(homeserver, token, user_id, device_id, data_dir, CrossSigningKeys.from_dict(pending))
-        else:
+        elif session_id:
             _log_approval_needed(user_id, url)
+        else:
+            logger.warning("Cross-signing: completing the pending approval failed (see above), will retry next start")
         return
 
     server_data = await _query_server(homeserver, token, user_id)
@@ -321,7 +332,7 @@ async def _ensure(homeserver: str, token: str, user_id: str, device_id: str, dat
     }
 
     # --- No keys on the server: a fresh account, set it up ---
-    if not all(server_pub.values()):
+    if not any(server_pub.values()):
         logger.info("Cross-signing: no keys on server, generating new keypairs and uploading")
         await _upload_new_keys(homeserver, token, user_id, device_id, data_dir)
         return
@@ -331,7 +342,9 @@ async def _ensure(homeserver: str, token: str, user_id: str, device_id: str, dat
     # The local file can be stale: the account's keys were reset later (e.g. from Element).
     # Signing with it is useless, and the upload would still "succeed" because the payload
     # carries the device's existing valid signature.
-    if local_keys is None:
+    if not all(server_pub.values()):
+        problem = "the server has an incomplete cross-signing key set"
+    elif local_keys is None:
         problem = f"no {_KEYS_FILE}"
     elif local_keys.self_signing_pub != ss_pub:
         problem = (f"{_KEYS_FILE} is stale (self-signing key {local_keys.self_signing_pub[:8]}… locally, "
@@ -339,10 +352,12 @@ async def _ensure(homeserver: str, token: str, user_id: str, device_id: str, dat
     else:
         problem = None
 
-    if _verify_device_sig(server_data, user_id, device_id, ss_pub):
+    if ss_pub and _verify_device_sig(server_data, user_id, device_id, ss_pub):
         logger.info("Cross-signing: device %s already validly signed, nothing to do", device_id)
-        if problem and local_keys is not None:
-            logger.warning("Cross-signing: %s; new devices can't be signed. %s", problem, _RESTORE_HINT)
+        if problem:
+            # Fine for now, but a new device (lost store, re-login) won't get signed.
+            log = logger.info if local_keys is None else logger.warning
+            log("Cross-signing: %s, so a new device couldn't be signed. %s", problem, _RESTORE_HINT)
         return
 
     if problem is None:
