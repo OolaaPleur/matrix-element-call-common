@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A minimal shared Python package (`matrix_bot_common`) extracted from the Matrix bot ecosystem — currently just `cross_signing.py`. Used by five bots: musicbot and scrobbler (installed from the sibling checkout, `../matrix-element-call-common` in `requirements.txt` — a plain copy, not editable, so reinstall after changes) and the three Navi bots `navi-assistant`, `navi-anki`, `navi-feeds` (pinned to a commit of this GitHub repo in their `pyproject.toml`/`uv.lock` — bump the pin after changes; they share one account's keys in `~/.local/share/navi-account/`). `navi-anki/scripts/sign_device.py` imports `_query_server`, `_sign_device`, `_verify_device_sig` and `load_local_keys` — keep those names.
+A minimal shared Python package (`matrix_bot_common`) extracted from the Matrix bot ecosystem — currently just `cross_signing.py`. Used by five bots, all as an **editable install of this sibling checkout** (since 2026-11-25): musicbot and scrobbler via `-e ../matrix-element-call-common` in `requirements.txt`, the three Navi bots `navi-assistant`, `navi-anki`, `navi-feeds` via `[tool.uv.sources] matrix-bot-common = { path = "../matrix-element-call-common", editable = true }` (they share one account's keys in `~/.local/share/navi-account/`). **A change here goes live in each bot on its next restart** — nothing to reinstall or pin, so restart them one at a time and check the log ("already validly signed"). Until 2026-11-25 the Navi bots pinned a GitHub commit and musicbot/scrobbler had a plain copy. `navi-anki/scripts/sign_device.py` imports `_query_server`, `_sign_device`, `_verify_device_sig` and `load_local_keys` — keep those names.
 
 ## Package structure
 
@@ -24,7 +24,7 @@ pip install -e .
 pip install -e ../matrix-element-call-common
 ```
 
-[matrix-element-call-musicbot](https://github.com/OolaaPleur/matrix-element-call-musicbot) and [matrix-element-call-scrobbler](https://github.com/OolaaPleur/matrix-element-call-scrobbler) reference this package via `../matrix-element-call-common` in their `requirements.txt`; the Navi bots via `git+https://github.com/OolaaPleur/matrix-element-call-common@<commit>`.
+[matrix-element-call-musicbot](https://github.com/OolaaPleur/matrix-element-call-musicbot) and [matrix-element-call-scrobbler](https://github.com/OolaaPleur/matrix-element-call-scrobbler) reference this package via `-e ../matrix-element-call-common` in their `requirements.txt`; the Navi bots via a `[tool.uv.sources]` path entry.
 
 ## cross_signing.py
 
