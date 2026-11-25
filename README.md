@@ -6,13 +6,14 @@ Shared Python utilities for the Matrix Element Call bot ecosystem.
 
 ### `matrix_bot_common.cross_signing`
 
-Matrix cross-signing bootstrap logic shared between the music bot and scrobbler. Handles:
+Matrix cross-signing bootstrap logic shared between the music bot, the scrobbler and the Navi bots. Handles:
 
 - Generating Ed25519 master / self-signing / user-signing keypairs
 - Uploading them via `/_matrix/client/v3/keys/device_signing/upload`
 - Signing the current device key via `/_matrix/client/v3/keys/signatures/upload`
 - UIA (User-Interactive Auth) pending-approval flow for `org.matrix.cross_signing_reset`
-- Persisting private keys to `data/cross_signing_keys.json` (chmod 600)
+- Persisting private keys to `data/cross_signing_keys.json` (mode 600, atomic write)
+- Never replacing existing keys on the server unless `CROSS_SIGNING_ALLOW_RESET=1` is set (a missing or stale local file only logs a pointer to `scripts/restore_cross_signing_keys.py`)
 
 **Entry point**: `ensure_cross_signing(homeserver, token, user_id, device_id, data_dir)`
 
@@ -38,3 +39,4 @@ pip install git+https://github.com/OolaaPleur/matrix-element-call-common
 
 - [matrix-element-call-musicbot](https://github.com/OolaaPleur/matrix-element-call-musicbot)
 - [matrix-element-call-scrobbler](https://github.com/OolaaPleur/matrix-element-call-scrobbler)
+- the Navi bots (navi-assistant, navi-anki, navi-feeds)
