@@ -43,3 +43,7 @@ pip install git+https://github.com/OolaaPleur/matrix-element-call-common
 - [matrix-element-call-musicbot](https://github.com/OolaaPleur/matrix-element-call-musicbot)
 - [matrix-element-call-scrobbler](https://github.com/OolaaPleur/matrix-element-call-scrobbler)
 - other bots of the author
+
+## License
+
+MIT — see [LICENSE](LICENSE).
