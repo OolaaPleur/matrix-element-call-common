@@ -16,7 +16,8 @@ Run it in the bot's directory (the one with data/), with the bot's Python:
 
 The bot directory can also be given as an argument. The homeserver and token
 come from the bot's config (CONFIG_FILE, else config.toml, else
-config/config.toml), or data/access_token for bots that log in by password.
+config/config.toml), else data/credentials.json, else data/access_token (bots
+that log in by password). Bots can also call restore() from their own setup.
 """
 import base64
 import datetime
@@ -100,29 +101,44 @@ def _find_config(bot: Path):
 
 
 def _credentials(bot: Path):
+    """Homeserver and token: the config's [matrix] section, else data/credentials.json
+    (written by a bot's setup script), else data/access_token (bots that log in by password)."""
+    matrix = {}
     config = _find_config(bot)
-    if config is None:
-        raise Abort(f"No config found in {bot} (config.toml or config/config.toml). "
-                    "Run this in the bot's directory or pass it as an argument.")
-    try:
-        matrix = tomllib.loads(config.read_text(encoding="utf-8")).get("matrix", {})
-    except (OSError, tomllib.TOMLDecodeError) as exc:
-        raise Abort(f"Can't read {config}: {exc}")
-    homeserver = str(matrix.get("homeserver", "")).rstrip("/")
-    if not homeserver:
-        raise Abort(f"No [matrix] homeserver in {config}")
-    token = matrix.get("access_token") or ""
+    if config is not None:
+        try:
+            matrix = tomllib.loads(config.read_text(encoding="utf-8")).get("matrix", {})
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            raise Abort(f"Can't read {config}: {exc}")
+    stored = {}
+    credentials = bot / "data" / "credentials.json"
+    if credentials.is_file():
+        try:
+            stored = json.loads(credentials.read_text())
+        except (OSError, ValueError) as exc:
+            raise Abort(f"Can't read {credentials}: {exc}")
+    homeserver = str(matrix.get("homeserver") or stored.get("homeserver") or "").rstrip("/")
+    token = matrix.get("access_token") or stored.get("access_token") or ""
     token_file = bot / "data" / "access_token"
     if not token and token_file.is_file():
         token = token_file.read_text().strip()
-    if not token:
-        raise Abort(f"No access token in {config} or {token_file} (start the bot once first)")
+    if not homeserver or not token:
+        raise Abort(f"No homeserver or access token found for the bot in {bot} "
+                    "(config, data/credentials.json or data/access_token). "
+                    "Run this in the bot's directory, after the bot's setup or first start.")
     return homeserver, token
 
 
-def restore(bot: Path) -> None:
-    data = bot / "data"
-    homeserver, token = _credentials(bot)
+def _ask_recovery_key() -> str:
+    return getpass.getpass("Recovery key (not shown): ")
+
+
+def restore(homeserver: str, token: str, data: Path, ask_key=_ask_recovery_key) -> str:
+    """Write data/cross_signing_keys.json from secret storage.
+
+    Returns "restored", "no_secret_storage" (nothing to restore: a fresh account,
+    the bot creates its keys on first start) or "skipped" (ask_key returned an
+    empty string). Raises Abort, with nothing changed, on any problem."""
 
     def api(method, path, body=None):
         req = urllib.request.Request(
@@ -150,13 +166,15 @@ def restore(bot: Path) -> None:
 
     default = account_data("m.secret_storage.default_key")
     if not default or "key" not in default:
-        raise Abort(f"{user_id} has no secret storage (no recovery set up). Nothing to restore; "
-                    f"let the bot replace the keys instead ({cs._ALLOW_RESET_ENV}=1).")
+        return "no_secret_storage"
     key_id = default["key"]
     desc = account_data(f"m.secret_storage.key.{key_id}") or {}
     print(f"{user_id}: secret storage key {key_id}")
 
-    key = decode_recovery_key(getpass.getpass("Recovery key (not shown): "))
+    text = ask_key()
+    if not text.strip():
+        return "skipped"
+    key = decode_recovery_key(text)
     if desc.get("iv") and desc.get("mac"):  # check the key before decrypting anything
         aes_key, mac_key = _derive(key, "")
         ctr = Counter.new(128, initial_value=int.from_bytes(base64.b64decode(desc["iv"]), "big"))
@@ -194,7 +212,8 @@ def restore(bot: Path) -> None:
     cs.save_local_keys(data, cs.CrossSigningKeys(
         master_sk=priv["master"], self_signing_sk=priv["self_signing"], user_signing_sk=priv["user_signing"],
         master_pub=pub["master"], self_signing_pub=pub["self_signing"], user_signing_pub=pub["user_signing"]))
-    print(f"Wrote {old} (mode 600). Restart the bot: it signs its device on start.")
+    print(f"Wrote {old} (mode 600). The bot signs its device with it on start.")
+    return "restored"
 
 
 def main(argv=None) -> int:
@@ -204,7 +223,14 @@ def main(argv=None) -> int:
         return 0
     bot = Path(argv[0] if argv else ".").resolve()
     try:
-        restore(bot)
+        result = restore(*_credentials(bot), bot / "data")
+        if result == "no_secret_storage":
+            raise Abort("The account has no secret storage (no recovery set up), so there is nothing "
+                        "to restore. A fresh account gets its keys from the bot on first start; to "
+                        f"replace existing keys, start the bot with {cs._ALLOW_RESET_ENV}=1.")
+        if result == "skipped":
+            raise Abort("No recovery key given.")
+        print("Restart the bot if it is running.")
     except Abort as exc:
         print(f"{exc}\nNothing changed.", file=sys.stderr)
         return 1
