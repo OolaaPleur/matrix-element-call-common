@@ -133,14 +133,15 @@ def _ask_recovery_key() -> str:
     return getpass.getpass("Recovery key (not shown): ")
 
 
-def restore(homeserver: str, token: str, data: Path, ask_key=_ask_recovery_key) -> str:
+def restore(homeserver: str, token: str, data: Path, ask_key=_ask_recovery_key, out=print) -> str:
     """Write data/cross_signing_keys.json from secret storage.
 
     Returns "restored"; "fresh" (the account has no cross-signing keys yet: the
     bot creates them on first start); "no_secret_storage" (the account has keys
     but no secret storage, so they can't be restored: only a reset helps); or
     "skipped" (ask_key returned an empty string). Raises Abort, with nothing
-    changed, on any problem."""
+    changed, on any problem. Progress goes to out() (pass a no-op to print
+    your own summary instead)."""
 
     def api(method, path, body=None):
         req = urllib.request.Request(
@@ -173,7 +174,7 @@ def restore(homeserver: str, token: str, data: Path, ask_key=_ask_recovery_key) 
         return "no_secret_storage" if has_keys else "fresh"
     key_id = default["key"]
     desc = account_data(f"m.secret_storage.key.{key_id}") or {}
-    print(f"{user_id}: secret storage key {key_id}")
+    out(f"{user_id}: secret storage key {key_id}")
 
     text = ask_key()
     if not text.strip():
@@ -202,7 +203,7 @@ def restore(homeserver: str, token: str, data: Path, ask_key=_ask_recovery_key) 
         priv[name] = _b64_loose(_decrypt(key, secret, stored).decode())
         pub[name] = cs._b64(bytes(SigningKey(priv[name]).verify_key))
         ok = pub[name] == server_pub[name]
-        print(f"  {name}: {pub[name][:8]}… server {server_pub[name][:8]}… {'OK' if ok else 'MISMATCH'}")
+        out(f"  {name}: {pub[name][:8]}… server {server_pub[name][:8]}… {'OK' if ok else 'MISMATCH'}")
         if not ok:
             raise Abort("Secret storage holds keys that don't match the server.")
 
@@ -212,11 +213,11 @@ def restore(homeserver: str, token: str, data: Path, ask_key=_ask_recovery_key) 
         stale = data / f"{cs._KEYS_FILE}.stale-{datetime.date.today():%Y%m%d}"
         old.rename(stale)
         stale.chmod(0o600)
-        print(f"Old file kept as {stale.name}")
+        out(f"Old file kept as {stale.name}")
     cs.save_local_keys(data, cs.CrossSigningKeys(
         master_sk=priv["master"], self_signing_sk=priv["self_signing"], user_signing_sk=priv["user_signing"],
         master_pub=pub["master"], self_signing_pub=pub["self_signing"], user_signing_pub=pub["user_signing"]))
-    print(f"Wrote {old} (mode 600). The bot signs its device with it on start.")
+    out(f"Wrote {old} (mode 600). The bot signs its device with it on start.")
     return "restored"
 
 
