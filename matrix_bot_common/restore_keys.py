@@ -136,9 +136,11 @@ def _ask_recovery_key() -> str:
 def restore(homeserver: str, token: str, data: Path, ask_key=_ask_recovery_key) -> str:
     """Write data/cross_signing_keys.json from secret storage.
 
-    Returns "restored", "no_secret_storage" (nothing to restore: a fresh account,
-    the bot creates its keys on first start) or "skipped" (ask_key returned an
-    empty string). Raises Abort, with nothing changed, on any problem."""
+    Returns "restored"; "fresh" (the account has no cross-signing keys yet: the
+    bot creates them on first start); "no_secret_storage" (the account has keys
+    but no secret storage, so they can't be restored: only a reset helps); or
+    "skipped" (ask_key returned an empty string). Raises Abort, with nothing
+    changed, on any problem."""
 
     def api(method, path, body=None):
         req = urllib.request.Request(
@@ -166,7 +168,9 @@ def restore(homeserver: str, token: str, data: Path, ask_key=_ask_recovery_key) 
 
     default = account_data("m.secret_storage.default_key")
     if not default or "key" not in default:
-        return "no_secret_storage"
+        query = api("POST", "/_matrix/client/v3/keys/query", {"device_keys": {user_id: []}}) or {}
+        has_keys = any(query.get(f"{name}_keys", {}).get(user_id) for name in SECRETS)
+        return "no_secret_storage" if has_keys else "fresh"
     key_id = default["key"]
     desc = account_data(f"m.secret_storage.key.{key_id}") or {}
     print(f"{user_id}: secret storage key {key_id}")
@@ -224,10 +228,12 @@ def main(argv=None) -> int:
     bot = Path(argv[0] if argv else ".").resolve()
     try:
         result = restore(*_credentials(bot), bot / "data")
+        if result == "fresh":
+            raise Abort("The account has no cross-signing keys yet: the bot creates them on first start.")
         if result == "no_secret_storage":
-            raise Abort("The account has no secret storage (no recovery set up), so there is nothing "
-                        "to restore. A fresh account gets its keys from the bot on first start; to "
-                        f"replace existing keys, start the bot with {cs._ALLOW_RESET_ENV}=1.")
+            raise Abort("The account has cross-signing keys but no secret storage (no recovery set up), "
+                        "so they can't be restored. Replace them: start the bot once with "
+                        f"{cs._ALLOW_RESET_ENV}=1.")
         if result == "skipped":
             raise Abort("No recovery key given.")
         print("Restart the bot if it is running.")
