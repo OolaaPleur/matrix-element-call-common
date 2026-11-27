@@ -2,6 +2,9 @@
 
 Shared Python utilities for the Matrix Element Call bot ecosystem.
 
+> [!TIP]
+> Issues and pull requests are welcome; changes here affect both bots. [Open an issue](https://github.com/OolaaPleur/matrix-element-call-common/issues) · [pull requests](https://github.com/OolaaPleur/matrix-element-call-common/pulls)
+
 ## What's in here
 
 ### `matrix_bot_common.cross_signing`
