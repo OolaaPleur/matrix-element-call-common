@@ -12,7 +12,8 @@ A minimal shared Python package (`matrix_bot_common`) extracted from the Matrix 
 matrix_bot_common/
 ├── __init__.py          (empty)
 └── cross_signing.py     (Matrix cross-signing bootstrap)
-scripts/restore_cross_signing_keys.py  (rewrite a stale keys file from secret storage; needs the recovery key)
+matrix_bot_common/restore_keys.py      (`python3 -m matrix_bot_common.restore_keys` in a bot dir: write the keys file from secret storage; needs the recovery key; ships in the bots' images)
+scripts/restore_cross_signing_keys.py  (old entry point, wraps restore_keys)
 pyproject.toml
 ```
 
@@ -47,7 +48,7 @@ Called once after `keys_upload` during bot startup. **Never raises** (errors are
 3. No keys at all on the server (fresh account) → generate, upload (UIA → pending + approval URL from the server's response), sign the device.
 4. Device already validly signed by the server's self-signing key → nothing to do; if the local keys file is missing (info) or stale (warning), say so — a new device couldn't be signed.
 5. Local keys match the server → sign the device.
-6. Otherwise (local file missing or stale, or the server has only part of the key set) → **warn and point to `scripts/restore_cross_signing_keys.py`; never replace the account's keys** unless the bot runs with `CROSS_SIGNING_ALLOW_RESET=1` (replacing them un-verifies the bot everywhere, for every user who verified it).
+6. Otherwise (local file missing or stale, or the server has only part of the key set) → **warn and point to `python3 -m matrix_bot_common.restore_keys`; never replace the account's keys** unless the bot runs with `CROSS_SIGNING_ALLOW_RESET=1` (replacing them un-verifies the bot everywhere, for every user who verified it).
 
 Private keys are written atomically with mode 600 from the start and fsync'ed before the rename (`_write_private`), to `data/cross_signing_keys.json`; the JSON format is unchanged and also read by other tools (e.g. musicbot's `scripts/show_cross_signing_fingerprint.py`).
 

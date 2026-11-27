@@ -13,7 +13,7 @@ Matrix cross-signing bootstrap logic shared between the music bot, the scrobbler
 - Signing the current device key via `/_matrix/client/v3/keys/signatures/upload`
 - UIA (User-Interactive Auth) pending-approval flow for `org.matrix.cross_signing_reset`
 - Persisting private keys to `data/cross_signing_keys.json` (mode 600, atomic write)
-- Never replacing existing keys on the server unless `CROSS_SIGNING_ALLOW_RESET=1` is set (a missing or stale local file only logs a pointer to `scripts/restore_cross_signing_keys.py`)
+- Never replacing existing keys on the server unless `CROSS_SIGNING_ALLOW_RESET=1` is set (a missing or stale local file only logs how to restore the keys with `python3 -m matrix_bot_common.restore_keys`, which asks for the account's recovery key)
 
 **Entry point**: `ensure_cross_signing(homeserver, token, user_id, device_id, data_dir)`
 

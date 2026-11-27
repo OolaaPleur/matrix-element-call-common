@@ -23,8 +23,10 @@ _PENDING_MAX_AGE = 24 * 3600
 # server already has keys the bot can't use, it only does that if explicitly allowed.
 _ALLOW_RESET_ENV = "CROSS_SIGNING_ALLOW_RESET"
 _RESTORE_HINT = (
-    "Restore the file with matrix-element-call-common/scripts/restore_cross_signing_keys.py "
-    f"(needs the recovery key), or set {_ALLOW_RESET_ENV}=1 to replace the account's keys."
+    "If the account has a recovery key (set up in Element), restore the keys: run "
+    "`python3 -m matrix_bot_common.restore_keys` in the bot's directory "
+    "(Docker: `docker compose exec <service> python3 -m matrix_bot_common.restore_keys`), "
+    f"then restart the bot. Without a recovery key, set {_ALLOW_RESET_ENV}=1 to replace the account's keys."
 )
 _SK_FIELDS = ("master_sk", "self_signing_sk", "user_signing_sk")
 
