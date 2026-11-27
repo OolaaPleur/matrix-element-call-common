@@ -15,9 +15,8 @@ Run it in the bot's directory (the one with data/), with the bot's Python:
     docker compose exec <service> python3 -m matrix_bot_common.restore_keys
 
 The bot directory can also be given as an argument. The homeserver and token
-come from the bot's config (CONFIG_FILE, else config.toml, else
-config/config.toml), else data/credentials.json, else data/access_token (bots
-that log in by password). Bots can also call restore() from their own setup.
+come from data/credentials.json (written by the bot's setup script). Bots can
+also call restore() from their own setup.
 """
 import base64
 import datetime
@@ -25,10 +24,8 @@ import getpass
 import hashlib
 import hmac
 import json
-import os
 import re
 import sys
-import tomllib
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -90,42 +87,20 @@ def _decrypt(key: bytes, name: str, enc: dict) -> bytes:
     return AES.new(aes_key, AES.MODE_CTR, counter=ctr).decrypt(ct)
 
 
-def _find_config(bot: Path):
-    env = os.environ.get("CONFIG_FILE")
-    candidates = [Path(env)] if env else [Path("config.toml"), Path("config") / "config.toml"]
-    for path in candidates:
-        path = path if path.is_absolute() else bot / path
-        if path.is_file():
-            return path
-    return None
-
-
 def _credentials(bot: Path):
-    """Homeserver and token: the config's [matrix] section, else data/credentials.json
-    (written by a bot's setup script), else data/access_token (bots that log in by password)."""
-    matrix = {}
-    config = _find_config(bot)
-    if config is not None:
-        try:
-            matrix = tomllib.loads(config.read_text(encoding="utf-8")).get("matrix", {})
-        except (OSError, tomllib.TOMLDecodeError) as exc:
-            raise Abort(f"Can't read {config}: {exc}")
-    stored = {}
+    """Homeserver and token from data/credentials.json (written by the bot's setup script)."""
     credentials = bot / "data" / "credentials.json"
+    stored = {}
     if credentials.is_file():
         try:
             stored = json.loads(credentials.read_text())
         except (OSError, ValueError) as exc:
             raise Abort(f"Can't read {credentials}: {exc}")
-    homeserver = str(matrix.get("homeserver") or stored.get("homeserver") or "").rstrip("/")
-    token = matrix.get("access_token") or stored.get("access_token") or ""
-    token_file = bot / "data" / "access_token"
-    if not token and token_file.is_file():
-        token = token_file.read_text().strip()
+    homeserver = str(stored.get("homeserver") or "").rstrip("/")
+    token = stored.get("access_token") or ""
     if not homeserver or not token:
-        raise Abort(f"No homeserver or access token found for the bot in {bot} "
-                    "(config, data/credentials.json or data/access_token). "
-                    "Run this in the bot's directory, after the bot's setup or first start.")
+        raise Abort(f"No login in {credentials}. Run this in the bot's directory, after its setup "
+                    "(scripts/setup.py).")
     return homeserver, token
 
 
