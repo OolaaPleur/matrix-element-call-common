@@ -13,7 +13,6 @@ matrix_bot_common/
 ├── __init__.py          (empty)
 └── cross_signing.py     (Matrix cross-signing bootstrap)
 matrix_bot_common/restore_keys.py      (`python3 -m matrix_bot_common.restore_keys` in a bot dir: write the keys file from secret storage; needs the recovery key; ships in the bots' images)
-scripts/restore_cross_signing_keys.py  (old entry point, wraps restore_keys)
 pyproject.toml
 ```
 
